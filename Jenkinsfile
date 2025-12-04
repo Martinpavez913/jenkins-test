@@ -28,13 +28,23 @@ pipeline {
                 '''
             }
         }
+
         stage('Python Security Audit') {
             steps {
                 sh '''
                     . venv/bin/activate
-                    pip install pip-audit
+                    # --- MODIFICADO: Instalamos pip-audit Y bandit ---
+                    pip install pip-audit bandit
+                    
                     mkdir -p dependency-check-report
+                    
+                    echo "--- Ejecutando PIP AUDIT ---"
                     pip-audit -r requirements.txt -f markdown -o dependency-check-report/pip-audit.md || true
+                    
+                    echo "--- Ejecutando BANDIT ---"
+                    # --- MODIFICADO: Ejecución de Bandit ---
+                    # Guardamos en JSON para facilitar integración futura o lectura
+                    bandit -r . -f json -o dependency-check-report/bandit-report.json || true
                 '''
             }
         }
@@ -55,6 +65,7 @@ pipeline {
                 }
             }
         }
+
         stage('Dependency Check') {
             environment {
                 NVD_API_KEY = credentials('nvdApiKey')
@@ -74,8 +85,19 @@ pipeline {
                     reportFiles: 'dependency-check-report.html',
                     reportName: 'OWASP Dependency Check Report'
                 ])
+                
+                // OPCIONAL: Si tienes el plugin "Warnings Next Generation", 
+                // descomenta las siguientes lineas para ver gráficos de Bandit:
+                // recordIssues(tools: [bandit(pattern: 'dependency-check-report/bandit-report.json')])
             }
         }
     }
 
+    // --- MODIFICADO: Bloque Post para guardar el reporte de Bandit ---
+    post {
+        always {
+            // Esto guarda el archivo json para que lo puedas descargar desde Jenkins
+            archiveArtifacts artifacts: 'dependency-check-report/bandit-report.json', allowEmptyArchive: true
+        }
+    }
 }
